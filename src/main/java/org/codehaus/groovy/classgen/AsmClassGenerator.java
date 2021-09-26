@@ -103,6 +103,7 @@ import org.codehaus.groovy.classgen.asm.OperandStack;
 import org.codehaus.groovy.classgen.asm.OptimizingStatementWriter;
 import org.codehaus.groovy.classgen.asm.WriterController;
 import org.codehaus.groovy.classgen.asm.WriterControllerFactory;
+import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.SourceUnit;
 import org.codehaus.groovy.runtime.ScriptBytecodeAdapter;
 import org.codehaus.groovy.syntax.RuntimeParserException;
@@ -252,6 +253,8 @@ public class AsmClassGenerator extends ClassGenerator {
     private static final MethodCaller createPojoWrapperMethod = MethodCaller.newStatic(ScriptBytecodeAdapter.class, "createPojoWrapper");
     private static final MethodCaller createGroovyObjectWrapperMethod = MethodCaller.newStatic(ScriptBytecodeAdapter.class, "createGroovyObjectWrapper");
 
+    private static final String RECORD_CLASS_NAME = "java.lang.Record";
+
     private final Map<String,ClassNode> referencedClasses = new HashMap<>();
     private boolean passingParams;
 
@@ -311,6 +314,13 @@ public class AsmClassGenerator extends ClassGenerator {
                     bytecodeVersion = minVersion;
                 }
             }
+
+            CompilerConfiguration config = classNode.getCompileUnit().getConfig();
+            if (bytecodeVersion >= Opcodes.V16 && classNode.isRecord() && config.isRecordsNative()) {
+                // `java.lang.Record` has been added since JDK16
+                classNode.setSuperClass(ClassHelper.makeWithoutCaching(RECORD_CLASS_NAME));
+            }
+
             classVisitor.visit(
                     bytecodeVersion,
                     adjustedClassModifiersForClassWriting(classNode),
