@@ -19,11 +19,13 @@
 package org.codehaus.groovy.vmplugin;
 
 import org.apache.groovy.util.Maps;
+import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 
 import java.math.BigDecimal;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -46,36 +48,47 @@ public class VMPluginFactory {
     );
 
     private static final VMPlugin PLUGIN;
+    private static final Map DEBUG_MAP = new LinkedHashMap();
 
     static {
         PLUGIN = createPlugin();
     }
 
     public static VMPlugin getPlugin() {
+        if (null == PLUGIN) {
+            throw new GroovyBugError("VM plugin is null, DEBUG_MAP: " + DEBUG_MAP);
+        }
         return PLUGIN;
     }
 
     private static VMPlugin createPlugin() {
-        return AccessController.doPrivileged((PrivilegedAction<VMPlugin>) () -> {
-            final BigDecimal specVer = new BigDecimal(System.getProperty("java.specification.version"));
-            ClassLoader loader = VMPluginFactory.class.getClassLoader();
-            for (Map.Entry<BigDecimal, String> entry : PLUGIN_MAP.entrySet()) {
-                if (isAtLeast(specVer, entry.getKey())) {
-                    final String pluginName = entry.getValue();
-                    try {
-                        return (VMPlugin) loader.loadClass(pluginName).getDeclaredConstructor().newInstance();
-                    } catch (Throwable t) {
-                        if (LOGGER.isLoggable(Level.FINE)) {
-                            LOGGER.fine("Trying to create VM plugin `" + pluginName + "`, but failed:\n" + DefaultGroovyMethods.asString(t)
-                            );
+        return AccessController.doPrivileged(new PrivilegedAction<VMPlugin>() {
+            @Override
+            public VMPlugin run() {
+                String ver = System.getProperty("java.specification.version");
+                DEBUG_MAP.put("ver", ver);
+                final BigDecimal specVer = new BigDecimal(ver);
+                DEBUG_MAP.put("specVer", specVer);
+                ClassLoader loader = VMPluginFactory.class.getClassLoader();
+                for (Map.Entry<BigDecimal, String> entry : PLUGIN_MAP.entrySet()) {
+                    if (isAtLeast(specVer, entry.getKey())) {
+                        final String pluginName = entry.getValue();
+                        DEBUG_MAP.put("pluginName", pluginName);
+                        try {
+                            return (VMPlugin) loader.loadClass(pluginName).getDeclaredConstructor().newInstance();
+                        } catch (Throwable t) {
+                            if (LOGGER.isLoggable(Level.FINE)) {
+                                LOGGER.fine("Trying to create VM plugin `" + pluginName + "`, but failed:\n" + DefaultGroovyMethods.asString(t)
+                                );
+                            }
+                            DEBUG_MAP.put("errMsg1", DefaultGroovyMethods.asString(t));
+                            return null;
                         }
-
-                        return null;
                     }
                 }
+                DEBUG_MAP.put("errMsg1", "Failed to find plugin");
+                return null;
             }
-
-            return null;
         });
     }
 }
